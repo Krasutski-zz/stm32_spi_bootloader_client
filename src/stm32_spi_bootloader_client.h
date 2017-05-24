@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-
 #define ERASE_ALL    0xFFFFU
 #define ERASE_BANK1  0xFFFEU
 #define ERASE_BANK2  0xFFFDU

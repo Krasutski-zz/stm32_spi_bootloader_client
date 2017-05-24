@@ -1,6 +1,6 @@
-#include "bootloader.h"
-#include <string.h>
+#include "stm32_spi_bootloader_client.h"
 
+#include <stddef.h>
 
 #define GET_CMD_COMMAND             0x00U  /*!< Get CMD command               */
 #define GET_VER_COMMAND             0x01U  /*!< Get Version command           */
@@ -15,21 +15,21 @@
 #define RU_COMMAND                  0x92U  /*!< Readout Unprotect command     */
 
 
-#define SSBC_SPI_SOF             0x5AU
-#define SSBC_ACK                 0x79U
-#define SSBC_NAK                 0x1FU
+#define SSBC_SPI_SOF                0x5AU
+#define SSBC_ACK                    0x79U
+#define SSBC_NAK                    0x1FU
 
-#define MAX_BOOTLOADER_TRANSFER_SIZE    256
+#define MAX_BOOTLOADER_TRANSFER_SIZE    256U
 
 static ssbc_result_t _wait_for_ack(void);
 static ssbc_result_t _wait_for_ack_timeout(const uint32_t attempts);
-static uint8_t _xor_checksum(const uint8_t *data, uint32_t size);
+static uint8_t _xor_checksum(const uint8_t *data, uint16_t size);
 static ssbc_result_t _send_cmd(uint8_t cmd);
 static ssbc_result_t _send_addr(const uint32_t address);
 static void _read_data(uint8_t *data, uint16_t size);
-static void _transmit(const uint8_t *data, uint32_t size);
-static void _receive(uint8_t pData[], uint32_t size);
-static void _transmit_receive(const uint8_t pTxData[], uint8_t pRxData[], uint32_t size);
+static void _transmit(const uint8_t *data, uint16_t size);
+static void _receive(uint8_t *data, uint16_t size);
+static void _transmit_receive(const uint8_t *tx, uint8_t *rx, uint16_t size);
 
 static spi_tx_rx_byte_t _tx_tx_byte = NULL;
 
@@ -57,10 +57,10 @@ static ssbc_result_t _send_addr(const uint32_t address) {
 
     uint8_t addr_frame[5];
 
-    addr_frame[0] = ((uint8_t) (address >> 24) & 0xFFU);
-    addr_frame[1] = ((uint8_t) (address >> 16) & 0xFFU);
-    addr_frame[2] = ((uint8_t) (address >> 8) & 0xFFU);
-    addr_frame[3] = ((uint8_t) address & 0xFFU);
+    addr_frame[0] = (uint8_t) (address >> 24);
+    addr_frame[1] = (uint8_t) (address >> 16);
+    addr_frame[2] = (uint8_t) (address >> 8);
+    addr_frame[3] = (uint8_t) (address);
     addr_frame[4] = _xor_checksum(addr_frame, sizeof(address));
     _transmit(addr_frame, sizeof(addr_frame));
 
@@ -76,7 +76,7 @@ static ssbc_result_t _wait_for_ack_timeout(uint32_t attempts) {
 
     uint8_t resp = 0x00;
     ssbc_result_t res = SSBC_RESULT_ERROR;
-    const uint8_t dummy = 0x00U;
+    const uint8_t dummy = 0x00;
     const uint8_t ack = SSBC_ACK;
 
     _transmit(&dummy, sizeof(dummy));
@@ -98,44 +98,44 @@ static ssbc_result_t _wait_for_ack_timeout(uint32_t attempts) {
     return res;
 }
 
-static uint8_t _xor_checksum(const uint8_t pData[], uint32_t size) {
+static uint8_t _xor_checksum(const uint8_t *data, uint16_t size) {
 
-    uint8_t sum = *pData;
+    uint8_t sum = *data;
     uint32_t i = 0;
 
     for (i = 1U; i < size; i++) {
-        sum ^= pData[i];
+        sum ^= data[i];
     }
 
     return sum;
 }
 
-static void _transmit(const uint8_t pData[], uint32_t size) {
+static void _transmit(const uint8_t *data, uint16_t size) {
 
     uint32_t i = 0;
     if(_tx_tx_byte != NULL) {
         for(i=0; i<size; i++) {
-            _tx_tx_byte(pData[i]);
+            _tx_tx_byte(data[i]);
         }
     }
 }
 
-static void _receive(uint8_t pData[], uint32_t size) {
+static void _receive(uint8_t *data, uint16_t size) {
 
     uint32_t i = 0;
     if(_tx_tx_byte != NULL) {
         for(i=0; i<size; i++) {
-            pData[i] = _tx_tx_byte(0x00);
+            data[i] = _tx_tx_byte(0x00);
         }
     }
 }
 
-static void _transmit_receive(const uint8_t pTxData[], uint8_t pRxData[], uint32_t size) {
+static void _transmit_receive(const uint8_t *tx, uint8_t *rx, uint16_t size) {
 
     uint32_t i = 0;
     if(_tx_tx_byte != NULL) {
         for(i=0; i<size; i++) {
-            pRxData[i] = _tx_tx_byte(pTxData[i]);
+            rx[i] = _tx_tx_byte(tx[i]);
         }
     }
 }
@@ -291,7 +291,8 @@ ssbc_result_t ssbc_erase(uint16_t *page_list, uint16_t page_count) {
             _transmit(temp, sizeof(page_list[0]));
         }
 
-        temp[0] = _xor_checksum((uint8_t*)page_list, sizeof(page_list[0]) * page_count);
+        temp[0] = _xor_checksum((uint8_t*)page_list,
+                                sizeof(page_list[0]) * page_count);
         _transmit(temp, sizeof(page_list[0]));
     }
 
